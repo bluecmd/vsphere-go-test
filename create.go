@@ -17,7 +17,8 @@ import (
 
 func main() {
 	ctx := context.Background()
-
+	
+	// Create vSphere API client
 	u, err := url.Parse(os.Args[1])
 	if err != nil {
 		log.Fatalf("url.Parse(): %v", err)
@@ -28,6 +29,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("NewClient(): %v", err)
 	}
+	
+	// Locate datacenter to use and select as default
 	finder := find.NewFinder(c.Client, /* recurse all */ false)
 	dc, err := finder.Datacenter(ctx, "bogal")
 	if err != nil {
@@ -40,6 +43,7 @@ func main() {
 		log.Fatalf("Folders(): %v", err)
 	}
 
+	// Create VM
 	spec := &types.VirtualMachineConfigSpec{
 		Name:       "test-vm",
 		GuestId:    "otherGuest",
@@ -49,6 +53,7 @@ func main() {
 		Firmware:   string(types.GuestOsDescriptorFirmwareTypeEfi),
 	}
 
+	// Create disk controller
 	var devices object.VirtualDeviceList
 	controller, err := devices.CreateSCSIController("pvscsi")
 	if err != nil {
@@ -56,6 +61,7 @@ func main() {
 	}
 	devices = append(devices, controller)
 
+	// Create disk
 	disk :=  &types.VirtualDisk{
 		VirtualDevice: types.VirtualDevice{
 			Key: devices.NewKey(),
@@ -66,9 +72,12 @@ func main() {
 		},
 		CapacityInKB: 1024*1024,
 	}
+	
+	// Attach disk to controller
 	devices.AssignController(disk, controller.(types.BaseVirtualController))
 	devices = append(devices, disk)
 
+	// Create network interface vmxnet3, non-DVS, using the network "VM Network"
 	backing := &types.VirtualEthernetCardNetworkBackingInfo{
 		VirtualDeviceDeviceBackingInfo: types.VirtualDeviceDeviceBackingInfo{
 			VirtualDeviceBackingInfo: types.VirtualDeviceBackingInfo{},
@@ -84,11 +93,13 @@ func main() {
 	}
 	devices = append(devices, netdev)
 
+	// Finish the VM configuration
 	deviceChange, err := devices.ConfigSpec(types.VirtualDeviceConfigSpecOperationAdd)
 	if err != nil {
 		log.Fatalf("ConfigSpec(VirtualDeviceConfigSpecOperationAdd): %v", err)
 	}
 
+	// Store in datastore1
 	datastore, err := finder.Datastore(ctx, "datastore1")
 	if err != nil {
 		log.Fatalf("finder.Datastore(datastore1): %v", err)
@@ -99,10 +110,13 @@ func main() {
 		VmPathName: fmt.Sprintf("[%s]", datastore.Name()),
 	}
 
+	// Use default resource pool for this datacenter
 	rp, err := finder.DefaultResourcePool(ctx)
 	if err != nil {
 		log.Fatalf("DefaultResourcePool(): %v", err)
 	}
+	
+	// Execute
 	_, err = folders.VmFolder.CreateVM(ctx, *spec, rp, nil)
 	if err != nil {
 		log.Fatalf("CreateVM(): %v", err)
