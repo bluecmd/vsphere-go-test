@@ -17,7 +17,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	
+
 	// Create vSphere API client
 	u, err := url.Parse(os.Args[1])
 	if err != nil {
@@ -29,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("NewClient(): %v", err)
 	}
-	
+
 	// Locate datacenter to use and select as default
 	finder := find.NewFinder(c.Client, /* recurse all */ false)
 	dc, err := finder.Datacenter(ctx, "bogal")
@@ -72,20 +72,19 @@ func main() {
 		},
 		CapacityInKB: 1024*1024,
 	}
-	
+
 	// Attach disk to controller
 	devices.AssignController(disk, controller.(types.BaseVirtualController))
 	devices = append(devices, disk)
 
 	// Create network interface vmxnet3, non-DVS, using the network "VM Network"
-	backing := &types.VirtualEthernetCardNetworkBackingInfo{
-		VirtualDeviceDeviceBackingInfo: types.VirtualDeviceDeviceBackingInfo{
-			VirtualDeviceBackingInfo: types.VirtualDeviceBackingInfo{},
-			DeviceName:               "VM Network",
-			UseAutoDetect:            types.NewBool(false),
-		},
-		Network:           (*types.ManagedObjectReference)(nil),
-		InPassthroughMode: types.NewBool(false),
+	network, err := finder.Network(ctx, "VM Network")
+	if err != nil {
+		log.Fatalf("finder.Network(VM Network): %v", err)
+	}
+	backing, err := network.EthernetCardBackingInfo(ctx)
+	if err != nil {
+		log.Fatalf("network.EthernetCardBackingInfo(): %v", err)
 	}
 	netdev, err := object.EthernetCardTypes().CreateEthernetCard("vmxnet3", backing)
 	if err != nil {
@@ -115,7 +114,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("DefaultResourcePool(): %v", err)
 	}
-	
+
 	// Execute
 	_, err = folders.VmFolder.CreateVM(ctx, *spec, rp, nil)
 	if err != nil {
